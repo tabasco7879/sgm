@@ -38,7 +38,6 @@ def get_doc_by_idx(x_data, x_idx, D):
     indices_num = np.repeat(np.arange(doc_count), x["doc_len"][x_idx])
     indices = np.stack([indices_num, x["indices"][indices_idx]], axis=1)
     data = x["data"][indices_idx]
-    print(np.sum(data))
     return indices, data, [doc_count, D]
 
 def generate_batch(x_idx, x_data, n_iter, batch_size, D):
@@ -50,8 +49,9 @@ def generate_batch(x_idx, x_data, n_iter, batch_size, D):
             random.shuffle(x_idx)
         # sort the batch id
         batch_idx = sorted(x_idx[batch_id * batch_size: batch_id * batch_size + batch_size])
+        M = len(x_idx) * 1.0 / len(batch_idx)
         batch_data = get_sparsetensorvalue(batch_idx, x_data, D)
-        yield n, batch_data
+        yield n, batch_data, M
 
 def get_sparsetensorvalue(x_idx, x_data, D):
     x_indices, x_values, x_shape = get_doc_by_idx(x_data, x_idx, D)
@@ -59,7 +59,7 @@ def get_sparsetensorvalue(x_idx, x_data, D):
     return x_stv
 
 def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_prob = 0.75):
-    model_spec = {"K0": 100, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 100, "H1": 100}
+    model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 100, "H1": 100}
     x_data = load_data("yelp100000.txt", N_doc, D)
     N_train = N_doc - 1000
     x_train_idx = list(range(N_train))
@@ -74,15 +74,24 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_pro
         if N_valid > 0:
             ELBO_R[0] = model.valid(valid_data)
 
-        for n, train_data in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
+        for n, train_data, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
             #print("iter:", n, end='\r')
-            log_p_mean, z_param = sess.run([model.log_p_mean, model.z], feed_dict={model.x: valid_data, model.keep_prob: 1.})
-            print(log_p_mean)
-            print("z0_alpha", np.max(z_param[0]), np.min(z_param[0]), np.any(np.isnan(z_param[0])))
-            print("z0_mean", np.max(z_param[1]), np.min(z_param[1]), np.any(np.isnan(z_param[1])))
-            print("z1_alpha", np.max(z_param[2]), np.min(z_param[2]), np.any(np.isnan(z_param[2])))
-            print("z1_mean", np.max(z_param[3]), np.min(z_param[3]), np.any(np.isnan(z_param[3])))
-            model.train(train_data, keep_prob)
+            model.train(train_data, keep_prob, M)
+            #log_p, h_z, z_param, zz, check_value = sess.run([model.log_p_data, model.h_Z, model.z_param, model.z,
+            #    (model.check_value, model.check_value1, model.check_value2, model.check_value3)],
+            #    feed_dict={model.x: valid_data, model.keep_prob: 1., model.M: 1.})
+            #print(log_p, h_z, check_value)
+            #print("z0_alpha", np.max(z_param[0]), np.min(z_param[0]), np.any(np.isnan(z_param[0])))
+            #print("z0_mean", np.max(z_param[1]), np.min(z_param[1]), np.any(np.isnan(z_param[1])))
+            #print("z1_alpha", np.max(z_param[2]), np.min(z_param[2]), np.any(np.isnan(z_param[2])))
+            #print("z1_mean", np.max(z_param[3]), np.min(z_param[3]), np.any(np.isnan(z_param[3])))
+            #print("z0", np.max(zz[0]), np.min(zz[0]), np.any(np.isnan(zz[0])))
+            #print("z1", np.max(zz[1]), np.min(zz[1]), np.any(np.isnan(zz[1])))
+            #assert(h_z>0 and not np.isnan(log_p))
+            #if n % 100==0:
+            #    W0 = sess.run(model.W0, feed_dict={model.x: valid_data, model.keep_prob: 1.})
+            #    filename = ('results/Yelp_'+ '%05d' % n + '.npy')
+            #    np.save(filename, W0)
             if N_valid > 0:
                 ELBO_R[n] = model.valid(valid_data)
                 converge = (ELBO_R[n] - ELBO_R[n - 1]) / abs(ELBO_R[n - 1])
