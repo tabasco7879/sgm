@@ -75,6 +75,11 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_pro
             ELBO_R[0] = model.valid(valid_data)
 
         for n, train_data, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
+            if n % 100==0 or n==1:
+                log_W0_mean = sess.run(model.log_W0_mean)
+                W0_mean = np.log(np.exp(log_W0_mean) + 1.)
+                filename = ('results/Yelp_'+ '%05d' % n + '.npy')
+                np.save(filename, W0_mean)
             #print("iter:", n, end='\r')
             model.train(train_data, keep_prob, M)
             #log_p, h_z, z_param, zz, check_value = sess.run([model.log_p_data, model.h_Z, model.z_param, model.z,
@@ -88,10 +93,6 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_pro
             #print("z0", np.max(zz[0]), np.min(zz[0]), np.any(np.isnan(zz[0])))
             #print("z1", np.max(zz[1]), np.min(zz[1]), np.any(np.isnan(zz[1])))
             #assert(h_z>0 and not np.isnan(log_p))
-            #if n % 100==0:
-            #    W0 = sess.run(model.W0, feed_dict={model.x: valid_data, model.keep_prob: 1.})
-            #    filename = ('results/Yelp_'+ '%05d' % n + '.npy')
-            #    np.save(filename, W0)
             if N_valid > 0:
                 ELBO_R[n] = model.valid(valid_data)
                 converge = (ELBO_R[n] - ELBO_R[n - 1]) / abs(ELBO_R[n - 1])

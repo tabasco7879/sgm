@@ -6,9 +6,6 @@ from tensorflow.contrib.distributions import Poisson
 from .gamma_ars import gamma_ars
 from .gamma_ars import gradient_gamma_ars
 
-tf.set_random_seed(123)
-npr.seed(123)
-
 Z_shp = 0.1
 Z_rte = 0.1
 W_shp = 0.1
@@ -27,12 +24,11 @@ def xavier_init(fan_in, fan_out, constant=0.1):
     high = constant*np.sqrt(6.0/(fan_in + fan_out))
     return tf.random_uniform((fan_in, fan_out), minval=low, maxval=high, dtype=tf.float32)
 
-#tf.reset_default_graph()
+tf.reset_default_graph()
+tf.set_random_seed(123)
 
 class DocumentModel(object):
     def __init__(self, sess, model_spec, learning_rate=0.01):
-        np.random.seed(123)
-
         self.model_spec = model_spec
         self.learning_rate = learning_rate
 
@@ -67,9 +63,9 @@ class DocumentModel(object):
 
         self.z = [z0, z1]
 
-        self.log_p, self.log_prior_w, self.log_p_data = self._generator_network(z0, z1, w0, w1)
+        self.logp, self.log_prior_w, self.logp_data = self._generator_network(z0, z1, w0, w1)
 
-        [g_logp_z0, g_logp_z1, g_logp_w0, g_logp_w1] = tf.gradients(self.log_p, [z0, z1, w0, w1])
+        [g_logp_z0, g_logp_z1, g_logp_w0, g_logp_w1] = tf.gradients(self.logp, [z0, z1, w0, w1])
         g_logp_Z0_alpha, g_logp_Z0_mean = gradient_gamma_ars(g_logp_z0, Z0_alpha, Z0_mean, h_val_z0, h_der_z0)
         g_logp_Z1_alpha, g_logp_Z1_mean = gradient_gamma_ars(g_logp_z1, Z1_alpha, Z1_mean, h_val_z1, h_der_z1)
         g_logp_W0_alpha, g_logp_W0_mean = gradient_gamma_ars(g_logp_w0, W0_alpha, W0_mean, h_val_w0, h_der_w0)
@@ -91,7 +87,7 @@ class DocumentModel(object):
         self.h_Z = tf.add(h_Z0, h_Z1)
         self.h_W = tf.add(h_W0, h_W1)
 
-        self.elbo = tf.div(tf.add(self.h_Z, self.log_p_data), tf.to_float(tf.shape(self.x)[0]))
+        self.elbo = tf.div(tf.add(self.h_Z, self.logp_data), tf.to_float(tf.shape(self.x)[0]))
 
         proxy_obj_Z0 = tf.add(tf.reduce_sum(tf.multiply(g_logp_Z0_alpha, Z0_alpha)), tf.reduce_sum(tf.multiply(g_logp_Z0_mean, Z0_mean)))
         proxy_obj_Z1 = tf.add(tf.reduce_sum(tf.multiply(g_logp_Z1_alpha, Z1_alpha)), tf.reduce_sum(tf.multiply(g_logp_Z1_mean, Z1_mean)))
@@ -130,15 +126,15 @@ class DocumentModel(object):
             H1 = self.model_spec["H1"]
             D = self.model_spec["D"]
 
-            self.H0_z0_alpha = tf.get_variable("H0_z0_alpha", dtype=tf.float32, initializer=xavier_init(H0, K0))
-            self.H0_z0_alpha_bias = tf.get_variable("H0_z0_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
-            self.H0_z0_mean = tf.get_variable("H0_z0_mean", dtype=tf.float32, initializer=xavier_init(H0, K0))
-            self.H0_z0_mean_bias = tf.get_variable("H0_z0_mean_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
+            self.H0_Z0_alpha = tf.get_variable("H0_Z0_alpha", dtype=tf.float32, initializer=xavier_init(H0, K0))
+            self.H0_Z0_alpha_bias = tf.get_variable("H0_Z0_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
+            self.H0_Z0_mean = tf.get_variable("H0_Z0_mean", dtype=tf.float32, initializer=xavier_init(H0, K0))
+            self.H0_Z0_mean_bias = tf.get_variable("H0_Z0_mean_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
 
-            self.H0_z1_alpha = tf.get_variable("H0_z1_alpha", dtype=tf.float32, initializer=xavier_init(H0, K1))
-            self.H0_z1_alpha_bias = tf.get_variable("H0_z1_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
-            self.H0_z1_mean = tf.get_variable("H0_z1_mean", dtype=tf.float32, initializer=xavier_init(H0, K1))
-            self.H0_z1_mean_bias = tf.get_variable("H0_z1_mean_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
+            self.H0_Z1_alpha = tf.get_variable("H0_Z1_alpha", dtype=tf.float32, initializer=xavier_init(H0, K1))
+            self.H0_Z1_alpha_bias = tf.get_variable("H0_Z1_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
+            self.H0_Z1_mean = tf.get_variable("H0_Z1_mean", dtype=tf.float32, initializer=xavier_init(H0, K1))
+            self.H0_Z1_mean_bias = tf.get_variable("H0_Z1_mean_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
 
             self.H0 = tf.get_variable("H0", dtype=tf.float32, initializer=xavier_init(H1, H0))
             self.H0_bias = tf.get_variable("H0_bias", dtype=tf.float32, initializer=tf.zeros([H0], dtype=tf.float32))
@@ -154,11 +150,15 @@ class DocumentModel(object):
             self.check_value2 = tf.reduce_min(self.H1)
             self.check_value3 = tf.reduce_min(self.H1_bias)
 
-            Z0_alpha = tf.add(tf.nn.softplus(tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_z0_alpha), self.H0_z0_alpha_bias))), min_Alpha)
-            Z0_mean = tf.add(tf.nn.softplus(tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_z0_mean), self.H0_z0_mean_bias))), min_Mean)
+            log_Z0_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_alpha), self.H0_Z0_alpha_bias))
+            log_Z0_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_mean), self.H0_Z0_mean_bias))
+            log_Z1_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z1_alpha), self.H0_Z1_alpha_bias))
+            log_Z1_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z1_mean), self.H0_Z1_mean_bias))
 
-            Z1_alpha = tf.add(tf.nn.softplus(tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_z1_alpha), self.H0_z1_alpha_bias))), min_Alpha)
-            Z1_mean = tf.add(tf.nn.softplus(tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_z1_mean), self.H0_z1_mean_bias))), min_Mean)
+            Z0_alpha = tf.add(tf.nn.softplus(log_Z0_alpha), min_Alpha)
+            Z0_mean = tf.add(tf.nn.softplus(log_Z0_mean), min_Mean)
+            Z1_alpha = tf.add(tf.nn.softplus(log_Z1_alpha), min_Alpha)
+            Z1_mean = tf.add(tf.nn.softplus(log_Z1_mean), min_Mean)
 
             return (Z0_alpha, Z0_mean, Z1_alpha, Z1_mean)
 
@@ -184,9 +184,9 @@ class DocumentModel(object):
         log_likelihood = tf.reduce_sum(poisson_X.log_prob(tf.sparse_tensor_to_dense(self.x)))
 
         log_prior_w = tf.add(log_prior_w0, log_prior_w1)
-        log_p_data = tf.add(tf.add(log_prior_z1, log_prior_z0), log_likelihood)
-        log_p = tf.add(tf.multiply(log_p_data, self.M), log_prior_w)
-        return log_p, log_prior_w, log_p_data
+        logp_data = tf.add(tf.add(log_prior_z1, log_prior_z0), log_likelihood)
+        logp = tf.add(tf.multiply(logp_data, self.M), log_prior_w)
+        return logp, log_prior_w, logp_data
 
     def _create_optimizer(self):
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.99).minimize(-self.proxy_obj)
