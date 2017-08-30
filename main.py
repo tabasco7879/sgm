@@ -19,13 +19,16 @@ def load_data(fname, N, D):
 
             # sort the entry to satisfy tensorflow sparsetensor requirement
             data_line = sorted(data_line, key=lambda x: x[0])
+            #total=sum([v for k, v in data_line])
             for k, v in data_line:
                 x["indices"].append(k)
                 x["data"].append(v)
+                x["data2"].append(1)
             x["doc_len"][-1]+=len(data_line)
 
     x["indices"] = np.array(x["indices"])
     x["data"] = np.array(x["data"])
+    x["data2"] = np.array(x["data2"])
     x["doc_len"] = np.array(x["doc_len"])
     x["doc_len_offset"] = np.cumsum(x["doc_len"]) - x["doc_len"]
 
@@ -38,7 +41,8 @@ def get_doc_by_idx(x_data, x_idx, D):
     indices_num = np.repeat(np.arange(doc_count), x["doc_len"][x_idx])
     indices = np.stack([indices_num, x["indices"][indices_idx]], axis=1)
     data = x["data"][indices_idx]
-    return indices, data, [doc_count, D]
+    data2 = x["data2"][indices_idx]
+    return indices, data, data2, [doc_count, D]
 
 def generate_batch(x_idx, x_data, n_iter, batch_size, D):
     random.seed(123)
@@ -50,15 +54,16 @@ def generate_batch(x_idx, x_data, n_iter, batch_size, D):
         # sort the batch id
         batch_idx = sorted(x_idx[batch_id * batch_size: batch_id * batch_size + batch_size])
         M = len(x_idx) * 1.0 / len(batch_idx)
-        batch_data = get_sparsetensorvalue(batch_idx, x_data, D)
-        yield n, batch_data, M
+        batch_data, batch_data2 = get_sparsetensorvalue(batch_idx, x_data, D)
+        yield n, batch_data, batch_data2, M
 
 def get_sparsetensorvalue(x_idx, x_data, D):
-    x_indices, x_values, x_shape = get_doc_by_idx(x_data, x_idx, D)
+    x_indices, x_values, x2_values, x_shape = get_doc_by_idx(x_data, x_idx, D)
     x_stv = tf.SparseTensorValue(indices=x_indices, values=x_values, dense_shape=x_shape)
-    return x_stv
+    x2_stv = tf.SparseTensorValue(indices=x_indices, values=x2_values, dense_shape=x_shape)
+    return x_stv, x2_stv
 
-def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_prob = 0.75):
+def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
     model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 100, "H1": 100}
     x_data = load_data("yelp100000.txt", N_doc, D)
     N_train = N_doc - 1000
@@ -66,37 +71,40 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 20000, keep_pro
 
     N_valid = N_doc  - N_train
     x_valid_idx = list(list(range(N_train, N_train + N_valid)))
-    valid_data = get_sparsetensorvalue(x_valid_idx, x_data, D)
+    valid_data, valid_data2 = get_sparsetensorvalue(x_valid_idx, x_data, D)
 
     ELBO_R = np.zeros(max_iter)
     with tf.Session() as sess:
-        model = DocumentModel(sess, model_spec)
+        model = DocumentModel(sess, model_spec, learning_rate)
         if N_valid > 0:
-            ELBO_R[0] = model.valid(valid_data)
+            ELBO_R[0], _, _ = model.valid(valid_data)
 
-        for n, train_data, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
-            if n % 100==0 or n==1:
-                log_W0_mean = sess.run(model.log_W0_mean)
-                W0_mean = np.log(np.exp(log_W0_mean) + 1.)
-                filename = ('results/Yelp_'+ '%05d' % n + '.npy')
-                np.save(filename, W0_mean)
+        g_logp_name = ['g_logp_Z0_alpha', 'g_logp_Z0_mean', 'g_logp_Z1_alpha', 'g_logp_Z1_mean',
+                       'g_logp_W0_alpha', 'g_logp_W0_mean', 'g_logp_W1_alpha', 'g_logp_W1_mean']
+        for n, train_data, train_data2, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
             #print("iter:", n, end='\r')
             model.train(train_data, keep_prob, M)
-            #log_p, h_z, z_param, zz, check_value = sess.run([model.log_p_data, model.h_Z, model.z_param, model.z,
-            #    (model.check_value, model.check_value1, model.check_value2, model.check_value3)],
-            #    feed_dict={model.x: valid_data, model.keep_prob: 1., model.M: 1.})
-            #print(log_p, h_z, check_value)
-            #print("z0_alpha", np.max(z_param[0]), np.min(z_param[0]), np.any(np.isnan(z_param[0])))
-            #print("z0_mean", np.max(z_param[1]), np.min(z_param[1]), np.any(np.isnan(z_param[1])))
-            #print("z1_alpha", np.max(z_param[2]), np.min(z_param[2]), np.any(np.isnan(z_param[2])))
-            #print("z1_mean", np.max(z_param[3]), np.min(z_param[3]), np.any(np.isnan(z_param[3])))
-            #print("z0", np.max(zz[0]), np.min(zz[0]), np.any(np.isnan(zz[0])))
-            #print("z1", np.max(zz[1]), np.min(zz[1]), np.any(np.isnan(zz[1])))
-            #assert(h_z>0 and not np.isnan(log_p))
+            #for g, g_name in zip(g_logp, g_logp_name):
+            #    print(g_name, np.max(g), np.min(g))
             if N_valid > 0:
-                ELBO_R[n] = model.valid(valid_data)
+                ELBO_R[n], Z_params, W_params = model.valid(valid_data)
                 converge = (ELBO_R[n] - ELBO_R[n - 1]) / abs(ELBO_R[n - 1])
                 print("iter: %d" % n, "converge: %0.6f" % converge, "val-elbo: %0.5f" % ELBO_R[n])
+                if n % 1000==0:
+                    W0_alpha, W0_mean, W1_alpha, W1_mean = W_params
+                    Z0_alpha, Z0_mean, Z1_alpha, Z1_mean = Z_params
+                    W0 = np.stack([W0_alpha, W0_mean], axis=0)
+                    W1 = np.stack([W1_alpha, W1_mean], axis=0)
+                    Z0 = np.stack([Z0_alpha, Z0_mean], axis=0)
+                    Z1 = np.stack([Z1_alpha, Z1_mean], axis=0)
+                    filename = ('results/Yelp_'+ '%06d' % n + '_W0'+'_LR' + str(learning_rate) + '.npy')
+                    np.save(filename, W0)
+                    filename = ('results/Yelp_'+ '%06d' % n + '_W1'+'_LR' + str(learning_rate) + '.npy')
+                    np.save(filename, W1)
+                    filename = ('results/Yelp_'+ '%06d' % n + '_Z0'+'_LR' + str(learning_rate) + '.npy')
+                    np.save(filename, Z0)
+                    filename = ('results/Yelp_'+ '%06d' % n + '_Z1'+'_LR' + str(learning_rate) + '.npy')
+                    np.save(filename, Z1)
 
 if __name__ == '__main__':
     main()

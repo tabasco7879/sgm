@@ -28,7 +28,7 @@ tf.reset_default_graph()
 tf.set_random_seed(123)
 
 class DocumentModel(object):
-    def __init__(self, sess, model_spec, learning_rate=0.01):
+    def __init__(self, sess, model_spec, learning_rate):
         self.model_spec = model_spec
         self.learning_rate = learning_rate
 
@@ -54,14 +54,13 @@ class DocumentModel(object):
 
         W0_alpha, W0_mean, W1_alpha, W1_mean = self._W_network()
         Z0_alpha, Z0_mean, Z1_alpha, Z1_mean = self._inference_network()
-        self.z_param = [Z0_alpha, Z0_mean, Z1_alpha, Z1_mean]
+        self.Z_param = [Z0_alpha, Z0_mean, Z1_alpha, Z1_mean]
+        self.W_param = [W0_alpha, W0_mean, W1_alpha, W1_mean]
 
         z0, h_val_z0, h_der_z0 = gamma_ars(Z0_alpha, Z0_mean, B)
         z1, h_val_z1, h_der_z1 = gamma_ars(Z1_alpha, Z1_mean, B)
         w0, h_val_w0, h_der_w0 = gamma_ars(W0_alpha, W0_mean, B)
         w1, h_val_w1, h_der_w1 = gamma_ars(W1_alpha, W1_mean, B)
-
-        self.z = [z0, z1]
 
         self.logp, self.log_prior_w, self.logp_data = self._generator_network(z0, z1, w0, w1)
 
@@ -79,6 +78,8 @@ class DocumentModel(object):
         g_logp_W0_mean = tf.stop_gradient(g_logp_W0_mean)
         g_logp_W1_alpha = tf.stop_gradient(g_logp_W1_alpha)
         g_logp_W1_mean = tf.stop_gradient(g_logp_W1_mean)
+
+        self.g_logp = [g_logp_Z0_alpha, g_logp_Z0_mean, g_logp_Z1_alpha, g_logp_Z1_mean, g_logp_W0_alpha, g_logp_W0_mean, g_logp_W1_alpha, g_logp_W1_mean]
 
         h_Z0 = tf.reduce_sum(entropy(Z0_alpha, Z0_mean))
         h_Z1 = tf.reduce_sum(entropy(Z1_alpha, Z1_mean))
@@ -128,12 +129,12 @@ class DocumentModel(object):
 
             self.H0_Z0_alpha = tf.get_variable("H0_Z0_alpha", dtype=tf.float32, initializer=xavier_init(H0, K0))
             self.H0_Z0_alpha_bias = tf.get_variable("H0_Z0_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
-            self.H0_Z0_mean = tf.get_variable("H0_Z0_mean", dtype=tf.float32, initializer=xavier_init(H0, K0))
+            self.H0_Z0_mean = tf.get_variable("H0_Z0_mean", dtype=tf.float32, initializer=xavier_init(H0, K0, 0.01))
             self.H0_Z0_mean_bias = tf.get_variable("H0_Z0_mean_bias", dtype=tf.float32, initializer=tf.zeros([K0], dtype=tf.float32))
 
             self.H0_Z1_alpha = tf.get_variable("H0_Z1_alpha", dtype=tf.float32, initializer=xavier_init(H0, K1))
             self.H0_Z1_alpha_bias = tf.get_variable("H0_Z1_alpha_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
-            self.H0_Z1_mean = tf.get_variable("H0_Z1_mean", dtype=tf.float32, initializer=xavier_init(H0, K1))
+            self.H0_Z1_mean = tf.get_variable("H0_Z1_mean", dtype=tf.float32, initializer=xavier_init(H0, K1, 0.01))
             self.H0_Z1_mean_bias = tf.get_variable("H0_Z1_mean_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
 
             self.H0 = tf.get_variable("H0", dtype=tf.float32, initializer=xavier_init(H1, H0))
@@ -144,11 +145,6 @@ class DocumentModel(object):
             layer_1 = tf.nn.relu(tf.add(tf.sparse_tensor_dense_matmul(self.x, self.H1), self.H1_bias))
             layer_2 = tf.tanh(tf.add(tf.matmul(layer_1, self.H0), self.H0_bias))
             layer_do = tf.nn.dropout(layer_2, self.keep_prob)
-
-            self.check_value = tf.reduce_max(self.H1)
-            self.check_value1 = tf.reduce_max(self.H1_bias)
-            self.check_value2 = tf.reduce_min(self.H1)
-            self.check_value3 = tf.reduce_min(self.H1_bias)
 
             log_Z0_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_alpha), self.H0_Z0_alpha_bias))
             log_Z0_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_mean), self.H0_Z0_mean_bias))
@@ -163,10 +159,6 @@ class DocumentModel(object):
             return (Z0_alpha, Z0_mean, Z1_alpha, Z1_mean)
 
     def _generator_network(self, z0, z1, w0, w1):
-        K0 = self.model_spec["K0"]
-        K1 = self.model_spec["K1"]
-        D = self.model_spec["D"]
-
         gamma_W = Gamma(tf.to_float(W_shp), tf.to_float(W_rte))
         log_prior_w0 = tf.reduce_sum(gamma_W.log_prob(w0))
         log_prior_w1 = tf.reduce_sum(gamma_W.log_prob(w1))
@@ -189,10 +181,10 @@ class DocumentModel(object):
         return logp, log_prior_w, logp_data
 
     def _create_optimizer(self):
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.99).minimize(-self.proxy_obj)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta2=0.9).minimize(-self.proxy_obj)
 
     def train(self, X, keep_prob, M):
         return self.sess.run((self.optimizer), feed_dict={self.x: X, self.keep_prob: keep_prob, self.M: M})
 
     def valid(self, X):
-        return self.sess.run((self.elbo), feed_dict={self.x: X, self.keep_prob: 1.0, self.M: 1.0})
+        return self.sess.run((self.elbo, self.Z_param, self.W_param), feed_dict={self.x: X, self.keep_prob: 1.0, self.M: 1.0})
