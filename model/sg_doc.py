@@ -6,8 +6,8 @@ from tensorflow.contrib.distributions import Poisson
 from .gamma_ars import gamma_ars
 from .gamma_ars import gradient_gamma_ars
 
-Z_shp = 0.1
-Z_rte = 0.1
+Z_shp = 0.3
+Z_rte = 0.3
 W_shp = 0.1
 W_rte = 0.3
 min_Alpha = 1e-3
