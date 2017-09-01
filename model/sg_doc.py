@@ -5,6 +5,7 @@ from tensorflow.contrib.distributions import Gamma
 from tensorflow.contrib.distributions import Poisson
 from .gamma_ars import gamma_ars
 from .gamma_ars import gradient_gamma_ars
+#from .sg_optimizer import SGOptimizer
 
 Z_shp = 0.3
 Z_rte = 0.3
@@ -70,6 +71,11 @@ class DocumentModel(object):
         g_logp_W0_alpha, g_logp_W0_mean = gradient_gamma_ars(g_logp_w0, W0_alpha, W0_mean, h_val_w0, h_der_w0)
         g_logp_W1_alpha, g_logp_W1_mean = gradient_gamma_ars(g_logp_w1, W1_alpha, W1_mean, h_val_w1, h_der_w1)
 
+        #g_logp_Z0_norm = tf.norm(tf.stack([g_logp_Z0_alpha, g_logp_Z0_mean], axis=0)) / 1e+5
+        #g_logp_Z1_norm = tf.norm(tf.stack([g_logp_Z1_alpha, g_logp_Z1_mean], axis=0)) / 1e+5
+        #g_logp_W0_norm = tf.norm(tf.stack([g_logp_W0_alpha, g_logp_W0_mean], axis=0)) / 1e+7
+        #g_logp_W1_norm = tf.norm(tf.stack([g_logp_W1_alpha, g_logp_W1_mean], axis=0)) / 1e+7
+
         g_logp_Z0_alpha = tf.stop_gradient(g_logp_Z0_alpha)
         g_logp_Z0_mean = tf.stop_gradient(g_logp_Z0_mean)
         g_logp_Z1_alpha = tf.stop_gradient(g_logp_Z1_alpha)
@@ -92,13 +98,13 @@ class DocumentModel(object):
 
         proxy_obj_Z0 = tf.add(tf.reduce_sum(tf.multiply(g_logp_Z0_alpha, Z0_alpha)), tf.reduce_sum(tf.multiply(g_logp_Z0_mean, Z0_mean)))
         proxy_obj_Z1 = tf.add(tf.reduce_sum(tf.multiply(g_logp_Z1_alpha, Z1_alpha)), tf.reduce_sum(tf.multiply(g_logp_Z1_mean, Z1_mean)))
-        proxy_obj_Z = tf.add(tf.add(proxy_obj_Z0, proxy_obj_Z1), tf.multiply(self.h_Z, self.M))
+        self.proxy_obj_Z = tf.add(tf.add(proxy_obj_Z0, proxy_obj_Z1), tf.multiply(self.h_Z, self.M))
 
         proxy_obj_W0 = tf.add(tf.reduce_sum(tf.multiply(g_logp_W0_alpha, W0_alpha)), tf.reduce_sum(tf.multiply(g_logp_W0_mean, W0_mean)))
         proxy_obj_W1 = tf.add(tf.reduce_sum(tf.multiply(g_logp_W1_alpha, W1_alpha)), tf.reduce_sum(tf.multiply(g_logp_W1_mean, W1_mean)))
-        proxy_obj_W = tf.add(tf.add(proxy_obj_W0, proxy_obj_W1), self.h_W)
+        self.proxy_obj_W = tf.add(tf.add(proxy_obj_W0, proxy_obj_W1), self.h_W)
 
-        self.proxy_obj = tf.add(proxy_obj_Z, proxy_obj_W)
+        self.proxy_obj = tf.add(self.proxy_obj_Z, self.proxy_obj_W)
 
     def _W_network(self):
         with tf.variable_scope("W"):
@@ -125,6 +131,7 @@ class DocumentModel(object):
             K1 = self.model_spec["K1"]
             H0 = self.model_spec["H0"]
             H1 = self.model_spec["H1"]
+            H2 = 100
             D = self.model_spec["D"]
 
             self.H0_Z0_alpha = tf.get_variable("H0_Z0_alpha", dtype=tf.float32, initializer=xavier_init(H0, K0))
@@ -137,19 +144,27 @@ class DocumentModel(object):
             self.H0_Z1_mean = tf.get_variable("H0_Z1_mean", dtype=tf.float32, initializer=xavier_init(H0, K1, 0.01))
             self.H0_Z1_mean_bias = tf.get_variable("H0_Z1_mean_bias", dtype=tf.float32, initializer=tf.zeros([K1], dtype=tf.float32))
 
-            self.H0 = tf.get_variable("H0", dtype=tf.float32, initializer=xavier_init(H1, H0))
-            self.H0_bias = tf.get_variable("H0_bias", dtype=tf.float32, initializer=tf.zeros([H0], dtype=tf.float32))
-            self.H1 = tf.get_variable("H1", dtype=tf.float32, initializer=xavier_init(D, H1))
+            self.H0_Z0 = tf.get_variable("H0_Z0", dtype=tf.float32, initializer=xavier_init(H1, H0))
+            self.H0_Z0_bias = tf.get_variable("H0_Z0_bias", dtype=tf.float32, initializer=tf.zeros([H0], dtype=tf.float32))
+            self.H0_Z1 = tf.get_variable("H0_Z1", dtype=tf.float32, initializer=xavier_init(H1, H0))
+            self.H0_Z1_bias = tf.get_variable("H0_Z1_bias", dtype=tf.float32, initializer=tf.zeros([H0], dtype=tf.float32))
+            self.H1 = tf.get_variable("H1", dtype=tf.float32, initializer=xavier_init(H2, H1))
             self.H1_bias = tf.get_variable("H1_bias", dtype=tf.float32, initializer=tf.zeros([H1], dtype=tf.float32))
+            self.H2 = tf.get_variable("H2", dtype=tf.float32, initializer=xavier_init(D, H2))
+            self.H2_bias = tf.get_variable("H2_bias", dtype=tf.float32, initializer=tf.zeros([H2], dtype=tf.float32))
 
-            layer_1 = tf.nn.relu(tf.add(tf.sparse_tensor_dense_matmul(self.x, self.H1), self.H1_bias))
-            layer_2 = tf.tanh(tf.add(tf.matmul(layer_1, self.H0), self.H0_bias))
-            layer_do = tf.nn.dropout(layer_2, self.keep_prob)
+            layer_2 = tf.nn.relu(tf.add(tf.sparse_tensor_dense_matmul(self.x, self.H2), self.H2_bias))
+            layer_1 = tf.nn.relu(tf.add(tf.matmul(layer_2, self.H1), self.H1_bias))
 
-            log_Z0_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_alpha), self.H0_Z0_alpha_bias))
-            log_Z0_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z0_mean), self.H0_Z0_mean_bias))
-            log_Z1_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z1_alpha), self.H0_Z1_alpha_bias))
-            log_Z1_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do, self.H0_Z1_mean), self.H0_Z1_mean_bias))
+            layer_0_Z0 = tf.nn.relu(tf.add(tf.matmul(layer_1, self.H0_Z0), self.H0_Z0_bias))
+            layer_do_Z0 = tf.nn.dropout(layer_0_Z0, self.keep_prob)
+            layer_0_Z1 = tf.nn.relu(tf.add(tf.matmul(layer_1, self.H0_Z1), self.H0_Z1_bias))
+            layer_do_Z1 = tf.nn.dropout(layer_0_Z1, self.keep_prob)
+
+            log_Z0_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do_Z0, self.H0_Z0_alpha), self.H0_Z0_alpha_bias))
+            log_Z0_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do_Z0, self.H0_Z0_mean), self.H0_Z0_mean_bias))
+            log_Z1_alpha = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do_Z1, self.H0_Z1_alpha), self.H0_Z1_alpha_bias))
+            log_Z1_mean = tf.contrib.layers.batch_norm(tf.add(tf.matmul(layer_do_Z1, self.H0_Z1_mean), self.H0_Z1_mean_bias))
 
             Z0_alpha = tf.add(tf.nn.softplus(log_Z0_alpha), min_Alpha)
             Z0_mean = tf.add(tf.nn.softplus(log_Z0_mean), min_Mean)
@@ -181,10 +196,15 @@ class DocumentModel(object):
         return logp, log_prior_w, logp_data
 
     def _create_optimizer(self):
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta2=0.9).minimize(-self.proxy_obj)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(-self.proxy_obj)
+        #var_list = [self.log_W0_alpha, self.log_W0_mean, self.log_W1_alpha, self.log_W1_mean,
+        #            self.H0_Z0_alpha, self.H0_Z0_alpha_bias, self.H0_Z0_mean, self.H0_Z0_mean_bias,
+        #            self.H0_Z1_alpha, self.H0_Z1_alpha_bias, self.H0_Z1_mean, self.H0_Z1_mean_bias,
+        #            self.H0, self.H0_bias, self.H1, self.H1_bias]
+        #self.optimizer = SGOptimizer(self.proxy_obj, var_list, 0.5).maximize()
 
     def train(self, X, keep_prob, M):
-        return self.sess.run((self.optimizer), feed_dict={self.x: X, self.keep_prob: keep_prob, self.M: M})
+        return self.sess.run((self.optimizer, self.g_logp), feed_dict={self.x: X, self.keep_prob: keep_prob, self.M: M})
 
     def valid(self, X):
         return self.sess.run((self.elbo, self.Z_param, self.W_param), feed_dict={self.x: X, self.keep_prob: 1.0, self.M: 1.0})
