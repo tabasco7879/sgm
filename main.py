@@ -83,7 +83,7 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_pr
                        'g_logp_W0_alpha', 'g_logp_W0_mean', 'g_logp_W1_alpha', 'g_logp_W1_mean']
         for n, train_data, train_data2, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
             #print("iter:", n, end='\r')
-            model.train(train_data, keep_prob, M)
+            _, g_logp = model.train(train_data, keep_prob, M)
             #for g, g_name in zip(g_logp, g_logp_name):
             #    print(g_name, np.max(g), np.min(g))
             if N_valid > 0:

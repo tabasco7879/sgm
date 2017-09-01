@@ -27,6 +27,9 @@
     <Compile Include="main.py" />
     <Compile Include="model\sg_doc.py" />
     <Compile Include="model/__init__.py" />
+    <Compile Include="model\sg_optimizer.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="model\" />
