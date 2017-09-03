@@ -97,13 +97,13 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_pr
                     W1 = np.stack([W1_alpha, W1_mean], axis=0)
                     Z0 = np.stack([Z0_alpha, Z0_mean], axis=0)
                     Z1 = np.stack([Z1_alpha, Z1_mean], axis=0)
-                    filename = ('results/Yelp_'+ '%06d' % n + '_W0'+'_LR' + str(learning_rate) + '.npy')
+                    filename = ('results/Yelp_'+ '%05d' % n + '_W0'+ '.npy')
                     np.save(filename, W0)
-                    filename = ('results/Yelp_'+ '%06d' % n + '_W1'+'_LR' + str(learning_rate) + '.npy')
+                    filename = ('results/Yelp_'+ '%05d' % n + '_W1'+ '.npy')
                     np.save(filename, W1)
-                    filename = ('results/Yelp_'+ '%06d' % n + '_Z0'+'_LR' + str(learning_rate) + '.npy')
+                    filename = ('results/Yelp_'+ '%05d' % n + '_Z0'+ '.npy')
                     np.save(filename, Z0)
-                    filename = ('results/Yelp_'+ '%06d' % n + '_Z1'+'_LR' + str(learning_rate) + '.npy')
+                    filename = ('results/Yelp_'+ '%05d' % n + '_Z1'+ '.npy')
                     np.save(filename, Z1)
 
 if __name__ == '__main__':
