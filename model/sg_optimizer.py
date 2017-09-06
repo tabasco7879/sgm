@@ -1,8 +1,8 @@
 import tensorflow as tf
 
 class SGOptimizer(object):
-    def __init__(self, loss, var_list, eta_list):
-        self.loss = loss
+    def __init__(self, func_obj, var_list, eta_list):
+        self.func_obj = func_obj
         self.eta_list = eta_list
         self.var_list = var_list
         self._iter = tf.Variable(0., trainable=False)
@@ -11,7 +11,7 @@ class SGOptimizer(object):
         for i, v in enumerate(self.var_list):
             v_hist = tf.get_variable(name = 'hist_1' + str(i), initializer = tf.zeros(tf.shape(v)), dtype=tf.float32)
             self.var_hist_list.append(v_hist)
-        gradients = tf.gradients(self.loss, self.var_list)
+        gradients = tf.gradients(self.func_obj, self.var_list)
         self.v1_list=[]
         for g, v, v_hist, eta1 in zip(gradients, self.var_list, self.var_hist_list, self.eta_list):
             v_hist1 = tf.assign(v_hist, 0.1 * tf.pow(g, 2.0) + 0.9 * v_hist)

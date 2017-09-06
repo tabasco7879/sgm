@@ -63,8 +63,8 @@ def get_sparsetensorvalue(x_idx, x_data, D):
     x2_stv = tf.SparseTensorValue(indices=x_indices, values=x2_values, dense_shape=x_shape)
     return x_stv, x2_stv
 
-def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
-    model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 100, "H1": 100}
+def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.1):
+    model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 300, "H1": 300, "H2": 300}
     x_data = load_data("yelp100000.txt", N_doc, D)
     N_train = N_doc - 1000
     x_train_idx = list(range(N_train))
@@ -79,18 +79,14 @@ def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_pr
         if N_valid > 0:
             ELBO_R[0], _, _ = model.valid(valid_data)
 
-        g_logp_name = ['g_logp_Z0_alpha', 'g_logp_Z0_mean', 'g_logp_Z1_alpha', 'g_logp_Z1_mean',
-                       'g_logp_W0_alpha', 'g_logp_W0_mean', 'g_logp_W1_alpha', 'g_logp_W1_mean']
         for n, train_data, train_data2, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
             #print("iter:", n, end='\r')
-            _, g_logp = model.train(train_data, keep_prob, M)
-            #for g, g_name in zip(g_logp, g_logp_name):
-            #    print(g_name, np.max(g), np.min(g))
+            model.train(train_data, keep_prob, M)
             if N_valid > 0:
                 ELBO_R[n], Z_params, W_params = model.valid(valid_data)
                 converge = (ELBO_R[n] - ELBO_R[n - 1]) / abs(ELBO_R[n - 1])
                 print("iter: %d" % n, "converge: %0.6f" % converge, "val-elbo: %0.5f" % ELBO_R[n])
-                if n % 1000==0:
+                if n % 100==0:
                     W0_alpha, W0_mean, W1_alpha, W1_mean = W_params
                     Z0_alpha, Z0_mean, Z1_alpha, Z1_mean = Z_params
                     W0 = np.stack([W0_alpha, W0_mean], axis=0)
