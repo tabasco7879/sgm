@@ -63,7 +63,7 @@ def get_sparsetensorvalue(x_idx, x_data, D):
     x2_stv = tf.SparseTensorValue(indices=x_indices, values=x2_values, dense_shape=x_shape)
     return x_stv, x2_stv
 
-def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.1):
+def main(N_doc = 10000, D = 2000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
     model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 300, "H1": 300, "H2": 300}
     x_data = load_data("yelp100000.txt", N_doc, D)
     N_train = N_doc - 1000

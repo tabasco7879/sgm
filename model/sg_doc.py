@@ -165,12 +165,12 @@ class DocumentModel(object):
             layer_1_do = tf.nn.dropout(layer_1, self.keep_prob)
 
             layer_2_Z0 = tf.nn.relu(tf.add(tf.matmul(layer_1_do, self.H1_Z0), self.H1_Z0_bias))
-            layer_2_Z0_do = tf.nn.dropout(layer_2_Z0, self.keep_prob2)
+            layer_2_Z0_do = tf.nn.dropout(layer_2_Z0, self.keep_prob)
             layer_2_Z1 = tf.nn.relu(tf.add(tf.matmul(layer_1_do, self.H1_Z1), self.H1_Z1_bias))
             layer_2_Z1_do = tf.nn.dropout(layer_2_Z1, self.keep_prob)
 
             layer_3_Z0 = tf.nn.relu(tf.add(tf.matmul(layer_2_Z0_do, self.H0_Z0), self.H0_Z0_bias))
-            layer_3_Z0_do = tf.nn.dropout(layer_3_Z0, self.keep_prob2)
+            layer_3_Z0_do = tf.nn.dropout(layer_3_Z0, self.keep_prob)
             layer_3_Z1 = tf.nn.relu(tf.add(tf.matmul(layer_2_Z1_do, self.H0_Z1), self.H0_Z1_bias))
             layer_3_Z1_do = tf.nn.dropout(layer_3_Z1, self.keep_prob)
 
@@ -209,15 +209,7 @@ class DocumentModel(object):
         return logp, log_prior_w, logp_data
 
     def _create_optimizer(self):
-        #self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.99).minimize(-self.proxy_obj)
-        var_list = [self.log_W0_alpha, self.log_W0_mean, self.log_W1_alpha, self.log_W1_mean,
-            self.H0_Z0_alpha, self.H0_Z0_alpha_bias, self.H0_Z0_mean, self.H0_Z0_mean_bias,
-            self.H0_Z1_alpha, self.H0_Z1_alpha_bias, self.H0_Z1_mean, self.H0_Z1_mean_bias,
-            self.H0_Z0, self.H0_Z0_bias, self.H0_Z1, self.H0_Z1_bias,
-            self.H1_Z0, self.H1_Z0_bias, self.H1_Z1, self.H1_Z1_bias,
-            self.H2, self.H2_bias]
-        eta_list = [0.5 for v in var_list]
-        self.optimizer = SGOptimizer(self.proxy_obj, var_list, eta_list).maximize()
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.99).minimize(-self.proxy_obj)
 
     def train(self, X, keep_prob, M):
         return self.sess.run((self.optimizer, self.g_logp),
