@@ -29,7 +29,7 @@ def xavier_init(fan_in, fan_out, constant=0.1):
 tf.reset_default_graph()
 tf.set_random_seed(123)
 
-class DocumentModel(object):
+class DocModel(object):
     def __init__(self, sess, model_spec, learning_rate):
         self.model_spec = model_spec
         self.learning_rate = learning_rate
@@ -37,7 +37,6 @@ class DocumentModel(object):
         # tf Graph input
         self.x = tf.sparse_placeholder(tf.float32, [None, self.model_spec["D"]], name="x")
         self.keep_prob = tf.placeholder(tf.float32)
-        self.keep_prob2 = tf.placeholder(tf.float32)
         self.M = tf.placeholder(tf.float32)
 
         # Create autoencoder network
@@ -209,12 +208,12 @@ class DocumentModel(object):
         return logp, log_prior_w, logp_data
 
     def _create_optimizer(self):
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.99).minimize(-self.proxy_obj)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, beta1=0.9).minimize(-self.proxy_obj)
 
     def train(self, X, keep_prob, M):
         return self.sess.run((self.optimizer, self.g_logp),
-            feed_dict={self.x: X, self.keep_prob: keep_prob, self.keep_prob2: 0.5, self.M: M})
+            feed_dict={self.x: X, self.keep_prob: keep_prob, self.M: M})
 
     def valid(self, X):
         return self.sess.run((self.elbo, self.Z_param, self.W_param),
-            feed_dict={self.x: X, self.keep_prob: 1.0, self.keep_prob2: 1., self.M: 1.0})
+            feed_dict={self.x: X, self.keep_prob: 1.0, self.M: 1.0})

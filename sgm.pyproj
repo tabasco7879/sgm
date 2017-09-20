@@ -30,6 +30,9 @@
     <Compile Include="model\sg_optimizer.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="model\sg_seg.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="model\" />

@@ -2,7 +2,8 @@ from collections import defaultdict
 import numpy as np
 import tensorflow as tf
 import random
-from model import DocumentModel
+from model import DocModel
+from model import SegModel
 
 def load_data(fname, N, D):
     x = defaultdict(list)
@@ -55,7 +56,7 @@ def generate_batch(x_idx, x_data, n_iter, batch_size, D):
         batch_idx = sorted(x_idx[batch_id * batch_size: batch_id * batch_size + batch_size])
         M = len(x_idx) * 1.0 / len(batch_idx)
         batch_data, batch_data2 = get_sparsetensorvalue(batch_idx, x_data, D)
-        yield n, batch_data, batch_data2, M
+        yield n, batch_data, batch_data2, M, batch_idx
 
 def get_sparsetensorvalue(x_idx, x_data, D):
     x_indices, x_values, x2_values, x_shape = get_doc_by_idx(x_data, x_idx, D)
@@ -63,23 +64,23 @@ def get_sparsetensorvalue(x_idx, x_data, D):
     x2_stv = tf.SparseTensorValue(indices=x_indices, values=x2_values, dense_shape=x_shape)
     return x_stv, x2_stv
 
-def main(N_doc = 10000, D = 2000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
+def main(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
     model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "sigma": 0.1, "H0": 300, "H1": 300, "H2": 300}
     x_data = load_data("yelp100000.txt", N_doc, D)
     N_train = N_doc - 1000
     x_train_idx = list(range(N_train))
 
     N_valid = N_doc  - N_train
-    x_valid_idx = list(list(range(N_train, N_train + N_valid)))
+    x_valid_idx = list(range(N_train, N_train + N_valid))
     valid_data, valid_data2 = get_sparsetensorvalue(x_valid_idx, x_data, D)
 
     ELBO_R = np.zeros(max_iter)
     with tf.Session() as sess:
-        model = DocumentModel(sess, model_spec, learning_rate)
+        model = DocModel(sess, model_spec, learning_rate)
         if N_valid > 0:
             ELBO_R[0], _, _ = model.valid(valid_data)
 
-        for n, train_data, train_data2, M in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
+        for n, train_data, train_data2, M, _ in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
             #print("iter:", n, end='\r')
             model.train(train_data, keep_prob, M)
             if N_valid > 0:
@@ -102,5 +103,44 @@ def main(N_doc = 10000, D = 2000, batch_size = 1000, max_iter = 100001, keep_pro
                     filename = ('results/Yelp_'+ '%05d' % n + '_Z1'+ '.npy')
                     np.save(filename, Z1)
 
+def main_m2(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep_prob = 0.75, learning_rate=0.01):
+    model_spec = {"K0": 50, "K1": 15, "D": D, "B": 4, "S": 1, "T": 2, "N": N_doc, "sigma": 0.1}
+    x_data = load_data("yelp100000.txt", N_doc, D)
+    N_train = N_doc - 1000
+    x_train_idx = list(range(N_train))
+
+    N_valid = N_doc  - N_train
+    x_valid_idx = list(range(N_train, N_train + N_valid))
+    valid_data, valid_data2 = get_sparsetensorvalue(x_valid_idx, x_data, D)
+
+    ELBO_R = np.zeros(max_iter)
+    with tf.Session() as sess:
+        model = SegModel(sess, model_spec, learning_rate)
+        if N_valid > 0:
+            ELBO_R[0], _ , _ = model.valid(valid_data, x_valid_idx)
+
+        for n, train_data, train_data2, M, batch_idx in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
+            #print("iter:", n, end='\r')
+            model.train(train_data, keep_prob, M, batch_idx)
+            if N_valid > 0:
+                ELBO_R[n], Z_params, W_params = model.valid(valid_data, x_valid_idx)
+                converge = (ELBO_R[n] - ELBO_R[n - 1]) / abs(ELBO_R[n - 1])
+                print("iter: %d" % n, "converge: %0.6f" % converge, "val-elbo: %0.5f" % ELBO_R[n])
+                if n % 100==0:
+                    W0_alpha, W0_mean, W1_alpha, W1_mean = W_params
+                    Z0_alpha, Z0_mean, Z1_alpha, Z1_mean = Z_params
+                    W0 = np.stack([W0_alpha, W0_mean], axis=0)
+                    W1 = np.stack([W1_alpha, W1_mean], axis=0)
+                    Z0 = np.stack([Z0_alpha, Z0_mean], axis=0)
+                    Z1 = np.stack([Z1_alpha, Z1_mean], axis=0)
+                    filename = ('results/Yelp_'+ '%05d' % n + '_W0'+ '.npy')
+                    np.save(filename, W0)
+                    filename = ('results/Yelp_'+ '%05d' % n + '_W1'+ '.npy')
+                    np.save(filename, W1)
+                    filename = ('results/Yelp_'+ '%05d' % n + '_Z0'+ '.npy')
+                    np.save(filename, Z0)
+                    filename = ('results/Yelp_'+ '%05d' % n + '_Z1'+ '.npy')
+                    np.save(filename, Z1)
+
 if __name__ == '__main__':
-    main()
+    main_m2()
