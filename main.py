@@ -120,7 +120,6 @@ def main_m2(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep
             ELBO_R[0], _ , _ = model.valid(valid_data, x_valid_idx)
 
         for n, train_data, train_data2, M, batch_idx in generate_batch(x_train_idx, x_data, max_iter, batch_size, D):
-            #print("iter:", n, end='\r')
             model.train(train_data, keep_prob, M, batch_idx)
             if N_valid > 0:
                 ELBO_R[n], Z_params, W_params = model.valid(valid_data, x_valid_idx)
@@ -128,19 +127,12 @@ def main_m2(N_doc = 10000, D = 10000, batch_size = 1000, max_iter = 100001, keep
                 print("iter: %d" % n, "converge: %0.6f" % converge, "val-elbo: %0.5f" % ELBO_R[n])
                 if n % 100==0:
                     W0_alpha, W0_mean, W1_alpha, W1_mean = W_params
-                    Z0_alpha, Z0_mean, Z1_alpha, Z1_mean = Z_params
                     W0 = np.stack([W0_alpha, W0_mean], axis=0)
                     W1 = np.stack([W1_alpha, W1_mean], axis=0)
-                    Z0 = np.stack([Z0_alpha, Z0_mean], axis=0)
-                    Z1 = np.stack([Z1_alpha, Z1_mean], axis=0)
                     filename = ('results/Yelp_'+ '%05d' % n + '_W0'+ '.npy')
                     np.save(filename, W0)
                     filename = ('results/Yelp_'+ '%05d' % n + '_W1'+ '.npy')
                     np.save(filename, W1)
-                    filename = ('results/Yelp_'+ '%05d' % n + '_Z0'+ '.npy')
-                    np.save(filename, Z0)
-                    filename = ('results/Yelp_'+ '%05d' % n + '_Z1'+ '.npy')
-                    np.save(filename, Z1)
 
 if __name__ == '__main__':
     main_m2()

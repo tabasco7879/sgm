@@ -68,7 +68,7 @@ class SegModel(object):
         w0, h_val_w0, h_der_w0 = gamma_ars(W0_alpha, W0_mean, B)
         w1, h_val_w1, h_der_w1 = gamma_ars(W1_alpha, W1_mean, B)
 
-        self.logp, self.log_prior_w, self.logp_data = self._generator_network(z0_list, s0_list, z1, w0, w1)
+        self.logp, self.log_prior_w, self.logp_data, self.logp_word = self._generator_network(z0_list, s0_list, z1, w0, w1)
 
         g_logp_list = tf.gradients(self.logp, z0_list + s0_list + [z1, w0, w1])
         g_logp_z0_list = g_logp_list[:len(z0_list)]
@@ -179,6 +179,7 @@ class SegModel(object):
         S0_rte = tf.to_float(W_rte)
         log_prior_s0 = 0.
         log_likelihood = 0.
+        log_word_likelihood = 0.
 
         S = self.model_spec["S"]
         D = self.model_spec["D"]
@@ -191,11 +192,13 @@ class SegModel(object):
             poisson_rate = tf.matmul(z0_sum, w0)
             poisson_X = Poisson(poisson_rate)
             log_likelihood += tf.reduce_sum(poisson_X.log_prob(x1[:,n,:]))
+            log_word_likelihood +=tf.reduce_sum(tf.log(poisson_rate / tf.reduce_sum(poisson_rate, axis=1, keep_dims=True)) * x1[:,n,:])
 
         log_prior_w = log_prior_w0 + log_prior_w1
         logp_data = log_prior_z1 + log_prior_z0 + log_likelihood
+        logp_word = log_prior_z1 + log_prior_z0 + log_word_likelihood
         logp = logp_data * self.M + log_prior_w
-        return logp, log_prior_w, logp_data
+        return logp, log_prior_w, logp_data, logp_word
 
     def _inference_network(self):
         N = self.model_spec["N"]
@@ -247,13 +250,17 @@ class SegModel(object):
         var_list = ([self.log_W0_alpha, self.log_W0_mean, self.log_W1_alpha, self.log_W1_mean,
             self.log_Z1_alpha, self.log_Z1_mean]
             + self.log_Z0_alphas + self.log_Z0_means + self.log_S0_alphas + self.log_S0_means)
-        self.optimizer = SGOptimizer(self.proxy_obj, var_list, 0.5).maximize()
+        self.optimizer = SGOptimizer(self.proxy_obj, var_list, 0.5, "train").maximize()
+
+        var_list = ([self.log_Z1_alpha, self.log_Z1_mean]
+            + self.log_Z0_alphas + self.log_Z0_means + self.log_S0_alphas + self.log_S0_means)
+        self.optimizer_valid = SGOptimizer(self.proxy_obj, var_list, 0.5, "valid").maximize()
 
     def train(self, X, keep_prob, M, X_idx):
         return self.sess.run((self.optimizer),
             feed_dict={self.x: X, self.keep_prob: keep_prob, self.M: M, self.x_idx: X_idx})
 
     def valid(self, X, X_idx):
-        elbo, z_params, w_params, _ = self.sess.run((self.elbo, self.Z_param, self.W_param, self.optimizer),
+        elbo, z_params, w_params, _ = self.sess.run((self.elbo, self.Z_param, self.W_param, self.optimizer_valid),
             feed_dict={self.x: X, self.keep_prob: 1.0, self.M: 1.0, self.x_idx: X_idx})
         return elbo, z_params, w_params
